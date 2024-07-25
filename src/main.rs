@@ -1,3 +1,52 @@
+mod unlink;
+mod restore;
+mod selection;
+mod tmp;
+
+use clap::{Parser, Subcommand};
+use crate::{
+    selection::Selection,
+    unlink::unlink
+};
+
+#[derive(Parser)]
+#[command(name = "nix tinker", version, about, long_about = None)]
+struct Cli {
+
+    #[arg(long, global = true)]
+    /// Preview files that will be changed
+    dry_run: bool, // TODO implement this
+
+    #[command(subcommand)]
+    command: Commands,
+}
+
+
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Unlinks files from the nix store
+    Unlink(Selection),
+    /// Restores unlinked files from the nix store
+    Restore(Selection),
+    /// Restores all unlinked files from the nix store
+    RestoreAll,
+}
+
 fn main() {
-    println!("Hello, world!");
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Unlink(selection) => {
+            unlink(selection);
+        },
+
+        Commands::Restore(_selection)=> { 
+            println!("restore selected files") // TODO
+        },
+
+        Commands::RestoreAll => {
+            println!("restore all unlinked files") // TODO
+        },
+    }
 }
