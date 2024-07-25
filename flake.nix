@@ -10,14 +10,24 @@
     };
 
     flake-utils.url = "github:numtide/flake-utils";
+
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, crane, flake-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs = { self, nixpkgs, ... }@inputs:
+    inputs.flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ (import inputs.rust-overlay) ];
+        };
 
-        craneLib = crane.mkLib pkgs;
+        craneLib = (inputs.crane.mkLib pkgs).overrideToolchain ( p:
+            p.rust-bin.fromRustupToolchainFile ./rust-toolchain
+        );
 
         # Common arguments can be set here to avoid repeating them later
         # Note: changes here will rebuild all dependency crates
@@ -33,7 +43,7 @@
           ];
         };
 
-        my-crate = craneLib.buildPackage (commonArgs // {
+        bin = craneLib.buildPackage (commonArgs // {
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
           # Additional environment variables or build phases/hooks can be set
@@ -43,13 +53,13 @@
       in
       {
         checks = {
-          inherit my-crate;
+          inherit bin;
         };
 
-        packages.default = my-crate;
+        packages.default = bin;
 
-        apps.default = flake-utils.lib.mkApp {
-          drv = my-crate;
+        apps.default = inputs.flake-utils.lib.mkApp {
+          drv = bin;
         };
 
         devShells.default = craneLib.devShell {
