@@ -26,7 +26,7 @@
         };
 
         craneLib = (inputs.crane.mkLib pkgs).overrideToolchain ( p:
-            p.rust-bin.fromRustupToolchainFile ./rust-toolchain
+            p.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml
         );
 
         # Common arguments can be set here to avoid repeating them later
