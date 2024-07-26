@@ -1,6 +1,12 @@
 use std::{
-    fs::create_dir_all, 
-    path::PathBuf
+    fs, io,
+    io::{Read, Write},
+    path::{Path, PathBuf},
+    process::Command,
+};
+use serde::{ 
+    Serialize,
+    Deserialize,
 };
 use crate::{
     Selection, 
@@ -8,15 +14,30 @@ use crate::{
 };
 
 
+#[derive(Serialize, Deserialize)]
 struct NixLink {
-    link: PathBuf,
-    store_file: PathBuf,
+    symlink: PathBuf,
+    nix_store_file: PathBuf,
+}
+
+impl NixLink {
+    fn from<P: AsRef<Path>>(link: P, store_file: P) -> io::Result<Self> { 
+        use std::path::absolute as abs;
+        Ok(Self {
+            symlink: abs(link)?,
+            nix_store_file: abs(store_file)?,
+        })
+    }
 }
 
 enum NixLinkRead {
     NotExisting(PathBuf), // path does not exist
     NotLink(PathBuf), // path is not symlink
     NotNix(PathBuf), // path is not a nix link
+    IoErr { // io error
+        path: PathBuf, 
+        why: io::Error
+    }, 
     Ok(NixLink), // path is a nix link
 }
 
@@ -26,25 +47,68 @@ fn read_nix_store_file(file: PathBuf) -> NixLinkRead {
         return NixLinkRead::NotExisting(file);
     }
 
-    match file.read_link() {
-        Err(_) => NixLinkRead::NotLink(file),
+    if !file.is_symlink() {
+        return NixLinkRead::NotLink(file);
+    }
+
+    match fs::canonicalize(&file) {
+        Err(why) => NixLinkRead::IoErr {
+            path: file,
+            why,
+        },
         Ok(linked_file) => {
             if !linked_file.starts_with("/nix/store/") {
                 NixLinkRead::NotNix(file)
             } else {
-                NixLinkRead::Ok(NixLink {
-                    link: file,
-                    store_file: linked_file,
-                })
+                match NixLink::from(&file, &linked_file) {
+                    Err(why) => NixLinkRead::IoErr {
+                        path: file,
+                        why
+                    },
+                    Ok(ret) => NixLinkRead::Ok(ret),
+                }
             }
         },
     }
 }
 
-fn unlink_nix_link(nix_link: &NixLink) -> std::io::Result<()>{
-    let dir = hash_link_dir(&nix_link.link);
-    create_dir_all(&dir)?;
-    let (link_path, store_path) = (std::path::absolute(&nix_link.link), todo!());
+fn unlink_nix_link(nix_link: &NixLink) -> io::Result<()>{
+
+    let dir = hash_link_dir(&nix_link.symlink)?;
+
+    if dir.exists() {
+        Command::new("rm")
+            .arg("-r")
+            .arg(&dir)
+            .status()?;
+    }
+
+    fs::create_dir_all(&dir)?;
+    let serialized = toml::to_string(&nix_link).map_err(|why| {
+        use io::{Error, ErrorKind};
+        Error::new(ErrorKind::Other, why)
+    })?;
+    let mut link_file = fs::File::create(&dir.join("link.toml"))?;
+    link_file.write_all(serialized.as_bytes())?;
+    let tmpfile = dir.join(nix_link.symlink.file_name().unwrap());
+
+    Command::new("cp")
+        .arg("--no-preserve=mode")
+        .arg("-r")
+        .arg(&nix_link.nix_store_file)
+        .arg(&tmpfile)
+        .status()?;
+
+    Command::new("unlink")
+        .arg(&nix_link.symlink)
+        .status()?;
+
+    Command::new("ln")
+        .arg("-s")
+        .arg(&tmpfile)
+        .arg(&nix_link.symlink)
+        .status()?;
+
     Ok(())
 }
 
@@ -61,13 +125,16 @@ pub fn unlink(files: Selection) {
             NixLinkRead::NotNix(file) => {
                 println!("unable to unlink {}: symlink does not point to nix store", file.display())
             },
+            NixLinkRead::IoErr { path: file, why }=> {
+                eprintln!("unable to unlink {}: {}", file.display(), why)
+            },
             NixLinkRead::Ok(link) => {
                 match unlink_nix_link(&link) {
                     Ok(_) => {
-                        println!("unlinked {}", link.link.display())
+                        println!("unlinked {}", link.symlink.display())
                     },
-                    Err(err) => {
-                        eprintln!("unable to unlink {}: {}", link.link.display(), err)
+                    Err(why) => {
+                        eprintln!("unable to unlink {}: {}", link.symlink.display(), why)
                     }
                 }
             },

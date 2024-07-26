@@ -3,11 +3,11 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 // hashes the filename
-fn hash<P: AsRef<Path>>(path: P) -> String {
-    let path = path.as_ref();
+fn hash<P: AsRef<Path>>(path: P) -> std::io::Result<String> {
+    let path = std::path::absolute(path.as_ref())?;
     let mut hasher = DefaultHasher::new();
     path.hash(&mut hasher);
-    format!("{:x}", hasher.finish())
+    Ok(format!("{:x}", hasher.finish()))
 }
 
 
@@ -25,9 +25,9 @@ fn get_tmp_dir() -> std::io::Result<PathBuf> {
     Ok(dir)
 }
 
-pub fn hash_link_dir<P: AsRef<Path>>(path: P) -> PathBuf {
-    let hash = PathBuf::from(hash(path));
+pub fn hash_link_dir<P: AsRef<Path>>(path: P) -> std::io::Result<PathBuf> {
+    let hash = PathBuf::from(hash(path)?);
     let mut ret = tmp_dir();
     ret.push(hash);
-    ret
+    Ok(ret)
 }
