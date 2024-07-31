@@ -2,7 +2,7 @@ use std::{
     fs, io,
     io::{Read, Write},
     path::{Path, PathBuf},
-    process::Command,
+    process::{self, Command},
 };
 use serde::{ 
     Serialize,
@@ -10,14 +10,13 @@ use serde::{
 };
 use crate::{
     Selection, 
-    tmp::hash_link_dir
+    tmp::hashed_dir,
 };
 
-
 #[derive(Serialize, Deserialize)]
-struct NixLink {
-    symlink: PathBuf,
-    nix_store_file: PathBuf,
+pub struct NixLink {
+    pub symlink: PathBuf,
+    pub nix_store_file: PathBuf,
 }
 
 impl NixLink {
@@ -51,7 +50,7 @@ fn read_nix_store_file(file: PathBuf) -> NixLinkRead {
         return NixLinkRead::NotLink(file);
     }
 
-    match fs::canonicalize(&file) {
+    match file.read_link() {
         Err(why) => NixLinkRead::IoErr {
             path: file,
             why,
@@ -74,7 +73,22 @@ fn read_nix_store_file(file: PathBuf) -> NixLinkRead {
 
 fn unlink_nix_link(nix_link: &NixLink) -> io::Result<()>{
 
-    let dir = hash_link_dir(&nix_link.symlink)?;
+    let dir = hashed_dir(&nix_link.symlink);
+    let rmdir = || {
+            if dir.exists() {
+                Command::new("rm")
+                    .arg("-r")
+                    .arg(&dir)
+                    .status().unwrap();
+            }
+    };
+    let check_command = |result: Result<(), process::ExitStatusError>| {
+        result.map_err(|why| {
+            rmdir();
+            use io::{Error, ErrorKind::Other};
+            Error::new(Other, why)
+        })
+    };
 
     if dir.exists() {
         Command::new("rm")
@@ -90,24 +104,24 @@ fn unlink_nix_link(nix_link: &NixLink) -> io::Result<()>{
     })?;
     let mut link_file = fs::File::create(&dir.join("link.toml"))?;
     link_file.write_all(serialized.as_bytes())?;
-    let tmpfile = dir.join(nix_link.symlink.file_name().unwrap());
+    let copy = dir.join(nix_link.symlink.file_name().unwrap());
 
-    Command::new("cp")
+    check_command(Command::new("unlink")
+        .arg(&nix_link.symlink)
+        .status()?.exit_ok())?;
+
+    check_command(Command::new("cp")
         .arg("--no-preserve=mode")
         .arg("-r")
-        .arg(&nix_link.nix_store_file)
-        .arg(&tmpfile)
-        .status()?;
+        .arg(fs::canonicalize(&nix_link.nix_store_file)?)
+        .arg(&copy)
+        .status()?.exit_ok())?;
 
-    Command::new("unlink")
-        .arg(&nix_link.symlink)
-        .status()?;
-
-    Command::new("ln")
+    check_command(Command::new("ln")
         .arg("-s")
-        .arg(&tmpfile)
+        .arg(&copy)
         .arg(&nix_link.symlink)
-        .status()?;
+        .status()?.exit_ok())?;
 
     Ok(())
 }

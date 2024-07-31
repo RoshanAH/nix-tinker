@@ -1,12 +1,15 @@
+#![feature(exit_status_error)]
 mod unlink;
 mod restore;
 mod selection;
 mod tmp;
 
 use clap::{Parser, Subcommand};
+
 use crate::{
     selection::Selection,
-    unlink::unlink
+    unlink::unlink,
+    restore::{restore, restore_all},
 };
 
 #[derive(Parser)]
@@ -41,12 +44,12 @@ fn main() {
             unlink(selection);
         },
 
-        Commands::Restore(_selection)=> { 
-            println!("restore selected files") // TODO
+        Commands::Restore(selection)=> { 
+            restore(selection);
         },
 
         Commands::RestoreAll => {
-            println!("restore all unlinked files") // TODO
+            restore_all();
         },
     }
 }
