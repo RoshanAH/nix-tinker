@@ -1,5 +1,5 @@
 {
-  description = "Build a cargo project without extra checks";
+  description = "tinker with configuration files without having to rebuild your system";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
