@@ -1,5 +1,5 @@
 [package]
-name = "tinker"
+name = "nix-tinker"
 version = "0.1.0"
 about = "unlinks files from the nix store to tinker without rebuilding"
 edition = "2021"
