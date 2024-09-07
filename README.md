@@ -7,7 +7,7 @@ One of the downsides of using home-manager/nixos is that for each config change 
 This gets tedious for configs that need to be rapidly tweaked such as hyprland or nvim.
 nix-tinker temporarily *unlink*s specified files linked to the nix store and links the files instead to temporary copies that you have write access to.
 This way, you are able to freely tinker without rebuilding.
-Once you are satisfyed with your tinkering, you can apply your desired changes to your nix config, *restore* your link to the nix store, and rebuild.
+Once you are satisfied with your tinkering, you can apply your desired changes to your nix config, *restore* your link to the nix store, and rebuild.
 
 ## Installation
 
